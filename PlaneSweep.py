@@ -12,20 +12,14 @@ class SweepLineStatus:
 class SweepLineStatusList:
     def __init__(self):
         self.sweepline = 0
-        self.tree = SortedList(key=lambda line_seg: line_seg.value_at_x(self.sweepline))
-
-    def index_in_tree(self, line):
-        for i in range(len(self.tree)):
-            if self.tree[i].is_equal(line):
-                return i
-        return -1
+        self.tree = []
 
     def add_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
         # Add a new line segment and report the s and s' which are adjacent to the new line
-        self.tree.add(line)
-        # self.tree.sort(key=lambda x: x.value_at_x(sweepline)) # TODO: Check
-        line_index = self.index_in_tree(line)
+        self.tree.append(line)
+        self.tree.sort(key=lambda x: x.value_at_x(sweepline)) # TODO: Check
+        line_index = self.tree.index(line)
         if 0 < line_index < len(self.tree)-1:
             intersection1 = line.compute_intersection(self.tree[line_index+1])
             if intersection1.p_type == PointType.OUT_OF_RANGE:
@@ -53,7 +47,7 @@ class SweepLineStatusList:
         self.sweepline = sweepline
         if len(self.tree) == 0:
             return None
-        line_index = self.index_in_tree(line)
+        line_index = self.tree.index(line)
         if 0 < line_index < len(self.tree)-1:
             intersection = self.tree[line_index - 1].compute_intersection(self.tree[line_index + 1])
             result = intersection if (intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION) \
@@ -67,8 +61,8 @@ class SweepLineStatusList:
     def swap_and_report_intersection(self, line1, line2, sweepline):
         self.sweepline = sweepline
         # Swap the order of l1 and l2 and report s adj to l1 and s' adj to l2
-        index1 = self.index_in_tree(line1)
-        index2 = self.index_in_tree(line2)
+        index1 = self.tree.index(line1)
+        index2 = self.tree.index(line2)
         if abs(index1-index2) != 1:
             raise Exception("Invalid line segments to swap. They are not adjacent in the tree.")
         self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
