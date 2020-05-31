@@ -3,6 +3,8 @@ import InputHandler
 import heapq
 from sortedcontainers import SortedList
 
+epsilon = 0.001
+
 
 class SweepLineStatus:
     def __init__(self):
@@ -20,10 +22,18 @@ class SweepLineStatusList:
                 return i
         return -1
 
+    def swap_order(self, index1, index2, line1, line2):
+        del self.tree[index1]
+        del self.tree[index2]
+        self.sweepline += epsilon
+        self.tree.add(line1)
+        self.tree.add(line2)
+
     def add_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
         # Add a new line segment and report the s and s' which are adjacent to the new line
         self.tree.add(line)
+        self.tree.update([])
         # self.tree.sort(key=lambda x: x.value_at_x(sweepline)) # TODO: Check
         line_index = self.index_in_tree(line)
         if 0 < line_index < len(self.tree)-1:
@@ -71,7 +81,8 @@ class SweepLineStatusList:
         index2 = self.index_in_tree(line2)
         if abs(index1-index2) != 1:
             raise Exception("Invalid line segments to swap. They are not adjacent in the tree.")
-        self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
+        # self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
+        self.swap_order(index1, index2, line1, line2)
         if index1 > index2:
             try:
                 intersection1 = line2.compute_intersection(self.tree[index1+1])
@@ -133,7 +144,7 @@ class EventsQueue:
 
     def next_unique_pop(self, prev):
         """
-        Pops a point from the PQ not equal to the prev
+        Pops a point from the PQ not equal to the prev. *Assuming no to events have the same x-coordinate.
         :param prev: Previous point
         :return: If there is a unique point [True, point.x, point]
                 Else return [False, None, None]
