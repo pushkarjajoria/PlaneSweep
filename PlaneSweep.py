@@ -4,6 +4,8 @@ import heapq
 from sortedcontainers import SortedList
 from bisect import bisect_left, insort_left
 
+epsilon = 0.001
+
 
 
 class KeyWrapper:
@@ -32,6 +34,13 @@ class SweepLineStatusList:
         bslindex = bisect_left(KeyWrapper(self.tree, key=lambda x: x.value_at_x(self.sweepline)),
                                line.value_at_x(self.sweepline))
         self.tree.insert(bslindex, line)
+
+    def swap_order(self, index1, index2, line1, line2):
+        del self.tree[index1]
+        del self.tree[index2]
+        self.sweepline += epsilon
+        self.tree.add(line1)
+        self.tree.add(line2)
 
     def add_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
@@ -83,7 +92,8 @@ class SweepLineStatusList:
         index2 = self.tree.index(line2)
         if abs(index1-index2) != 1:
             raise Exception("Invalid line segments to swap. They are not adjacent in the tree.")
-        self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
+        # self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
+        self.swap_order(index1, index2, line1, line2)
         if index1 > index2:
             try:
                 intersection1 = line2.compute_intersection(self.tree[index1+1])
@@ -145,7 +155,7 @@ class EventsQueue:
 
     def next_unique_pop(self, prev):
         """
-        Pops a point from the PQ not equal to the prev
+        Pops a point from the PQ not equal to the prev. *Assuming no to events have the same x-coordinate.
         :param prev: Previous point
         :return: If there is a unique point [True, point.x, point]
                 Else return [False, None, None]
