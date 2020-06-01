@@ -4,7 +4,7 @@ from InputHandler import LineSegment, PointType, PlaneSweepInput
 from PlaneSweep import PlaneSweep
 import time
 
-n = 1000
+n = 10000
 lines = []
 for i in range(n):
     slope = np.random.randint(0,20)

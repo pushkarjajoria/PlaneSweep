@@ -1,22 +1,29 @@
+from cmath import sqrt
 from enum import Enum
+from shapely.geometry import LineString
+from shapely.geometry import Point as ShapelyPoint
 
 
 class PointType(Enum):
     STARTING = 1
     END = 2
     INTERSECTION = 3
-    UPPER_CIRCLE_START = 4
-    LOWER_CIRCLE_END = 5
-    OUT_OF_RANGE = 6
+    CIRCLE_START = 4
+    CIRCLE_END = 5
+    C_w_C_INTERSECTION = 6 # Circle with circle
+    C_w_L_INTERSECTION = 7 # Circle with line
+    OUT_OF_RANGE = 8
 
 
 class Point:
-    def __init__(self,x, y, p_type, line1=None, line2=None):
+    def __init__(self,x, y, p_type, line1=None, line2=None, circle1=None, circle2=None):
         self.x = x
         self.y = y
         self.p_type = p_type
         self.line1 = line1
         self.line2 = line2
+        self.circle1 = circle1
+        self.circle2 = circle2
 
     def coordinate(self):
         return self.x, self.y
@@ -68,13 +75,78 @@ class LineSegment:
 
 
 class Circle:
-    def __init__(self, x, y, r):
+    def __init__(self, x, y, r, upper_circle, lower_circle):
         self.center_x = x
         self.center_y = y
+        self.upper_circle = upper_circle
+        self.lower_circle = lower_circle
         self.radius = r
 
     def center(self):
         return self.center_x, self.center_y
+
+    def value_at_x(self, x):
+        b = 2*self.center_y
+        a = self.center_x
+        c = -(self.radius**2) + x**2 + a**2 - 2*a*x
+        # TODO These can be complex numbers but ideally should not matter since the circle is always removed
+        return (-b + sqrt(b**2 - 4*a*c))/2*a, (-b - sqrt(b**2 - 4*a*c))/2*a
+
+    def compute_intersection_line(self, line):
+        # TODO Tangency case
+        p = ShapelyPoint(self.center_x, self.center_y)
+        c = p.buffer(self.radius).boundary
+        l = LineString([(0, line.value_at_x(0)), (10, line.value_at_x(10))])
+        i = c.intersection(l)
+        result = []
+        try:
+            i.geoms[0].coords[0], i.geoms[1].coords[0]
+        except AttributeError:
+            return None, None
+        if line.t1 <= i.geoms[0].coords[0][0] <= line.t2:
+            result.append(Point(i.geoms[0].coords[0][0], i.geoms[0].coords[0][1], PointType.C_w_L_INTERSECTION, circle1=self, line1=line))
+        else:
+            result.append(None)
+        if line.t1 <= i.geoms[1].coords[0][0] <= line.t2:
+            result.append(Point(i.geoms[1].coords[0][0], i.geoms[1].coords[0][1], PointType.C_w_L_INTERSECTION, circle1=self, line1=line))
+        else:
+            result.append(None)
+        return result[0], result[1]
+
+    def compute_intersection_circle(self, circle2):
+        # TODO Tangency case
+        p1 = ShapelyPoint(self.center_x, self.center_y)
+        c1 = p1.buffer(self.radius).boundary
+        p2 = ShapelyPoint(circle2.center_x, circle2.center_y)
+        c2 = p2.buffer(circle2.radius).boundary
+        i = c1.intersection(c2)
+        try:
+            i.geoms[0].coords[0], i.geoms[1].coords[0]
+        except AttributeError:
+            # Check Tangency
+            return Point(float('inf'), float('inf'), PointType.OUT_OF_RANGE), Point(float('inf'), float('inf'), PointType.OUT_OF_RANGE)
+        p1 = Point( i.geoms[0].coords[0][0],  i.geoms[0].coords[0][1], PointType.C_w_C_INTERSECTION, circle1=self, circle2= circle2)
+        p2 = Point( i.geoms[1].coords[0][0],  i.geoms[1].coords[0][1], PointType.C_w_C_INTERSECTION, circle1=self, circle2= circle2)
+
+        return p1, p2
+
+    def is_same(self, circle2):
+        circle1 = self
+        if circle1.center_x == circle2.center_x and circle1.center_y == circle2.center_y and circle1.radius == circle2.radius:
+            return True
+        else:
+            return False
+
+
+class CircleHalf(Enum):
+    UPPER = 1
+    LOWER = 2
+
+
+class HalfCircle:
+    def __init__(self, parent_circle, half):
+        self.parent = parent_circle
+        self.half = half
 
 
 class PlaneSweepInput:

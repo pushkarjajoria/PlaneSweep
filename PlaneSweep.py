@@ -1,17 +1,11 @@
 from InputHandler import PlaneSweepInput, Point, PointType
 import InputHandler
 import heapq
-from sortedcontainers import SortedList
 
 epsilon = 0.001
 
 
 class SweepLineStatus:
-    def __init__(self):
-        pass
-
-
-class SweepLineStatusList:
     def __init__(self):
         self.sweepline = 0
         self.tree = SortedList(key=lambda line_seg: line_seg.value_at_x(self.sweepline))
@@ -29,93 +23,275 @@ class SweepLineStatusList:
         self.tree.add(line1)
         self.tree.add(line2)
 
+    def _binary_append(self, line):
+        self.tree.append(line)
+        self.tree.sort(key=lambda x: x.value_at_x(self.sweepline))  # TODO: Optimize
+
+    def swap_cwc_intersection(self, circle1, circle2):
+        if circle1.y > circle2.y:
+            up_circle = circle1
+            low_circle = circle2
+        else:
+            up_circle = circle2
+            low_circle = circle1
+
+        low_half_circle_index = self.tree.index(up_circle.lower_circle)
+        up_half_circle_index = self.tree.index(low_circle.upper_circle)
+
+        self.tree[low_half_circle_index], self.tree[up_half_circle_index] = self.tree[up_half_circle_index], self.tree[low_half_circle_index]
+
+
+
+    def delete_circle_report_intersection(self, circle, sweepline):
+        self.sweepline = sweepline
+        intersections = []
+        upper_circle_index = self.tree.index(circle.upper_circle)
+        lower_circle_index = self.tree.index(circle.lower_circle)
+        if upper_circle_index - lower_circle_index != 1:
+            raise Exception("Circles are adjacent in the Sweepline status")
+        try:
+            upper_obj = self.tree[upper_circle_index+1]
+            lower_obj = self.tree[lower_circle_index-1]
+            if type(upper_obj) is InputHandler.LineSegment and type(lower_obj) is InputHandler.LineSegment:
+                intersection = upper_obj.compute_intersection(lower_obj)
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    intersections.append(intersection)
+            elif type(upper_obj) is InputHandler.LineSegment and type(lower_obj) is InputHandler.HalfCircle:
+                circle_intersection1, circle_intersection2 = lower_obj.parent.compute_intersection_line(upper_obj)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+            elif type(upper_obj) is InputHandler.HalfCircle and type(lower_obj) is InputHandler.LineSegment:
+                circle_intersection1, circle_intersection2 = upper_obj.parent.compute_intersection_line(lower_obj)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+            else:
+                circle_intersection1, circle_intersection2 = upper_obj.parent.compute_intersection_circle(lower_obj)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+        except IndexError:
+            return intersections
+
+    def add_circle_report_intersection(self, circle, sweepline):
+        self.sweepline = sweepline
+        intersections = []
+        self._binary_append(circle.upper_circle)
+        self._binary_append(circle.lower_circle)
+        upper_circle_index = self.tree.index(circle.upper_circle)
+        lower_circle_index = self.tree.index(circle.lower_circle)
+        if upper_circle_index < lower_circle_index:
+            self.tree[upper_circle_index], self.tree[lower_circle_index] = self.tree[lower_circle_index], self.tree[upper_circle_index]
+            upper_circle_index, lower_circle_index = lower_circle_index, upper_circle_index
+        try:
+            obj_above = self.tree[upper_circle_index+1]
+            if type(obj_above) is InputHandler.LineSegment:
+                intersection1, intersection2 = circle.compute_intersection_line(obj_above)
+                intersections.append(intersection1)
+                intersections.append(intersection2)
+            else:
+                circle_intersection1, circle_intersection2 = circle.compute_intersection_circle(obj_above.parent)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+        except IndexError:
+            pass
+        try:
+            obj_below = self.tree[lower_circle_index-1]
+            if type(obj_below) is InputHandler.LineSegment:
+                intersection1, intersection2 = circle.compute_intersection_line(obj_below)
+                intersections.append(intersection1)
+                intersections.append(intersection2)
+            else:
+                circle_intersection1, circle_intersection2 = circle.compute_intersection_circle(obj_below.parent)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+        except IndexError:
+            pass
+        return intersections
+
     def add_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
         # Add a new line segment and report the s and s' which are adjacent to the new line
-        self.tree.add(line)
-        self.tree.update([])
-        # self.tree.sort(key=lambda x: x.value_at_x(sweepline)) # TODO: Check
-        line_index = self.index_in_tree(line)
+        self._binary_append(line)
+        line_index = self.tree.index(line)
+        intersections = []
+
+        # In between the tree so check both above and below
         if 0 < line_index < len(self.tree)-1:
-            intersection1 = line.compute_intersection(self.tree[line_index+1])
-            if intersection1.p_type == PointType.OUT_OF_RANGE:
-                intersection1 = None
-            intersection2 = line.compute_intersection(self.tree[line_index-1])
-            if intersection2.p_type == PointType.OUT_OF_RANGE:
-                intersection2 = None
-            return intersection1, intersection2
+            adj_obj = self.tree[line_index+1]
+
+            # Object below is a line segment
+            if type(adj_obj) is InputHandler.LineSegment:
+                intersection1 = line.compute_intersection(adj_obj)
+                if intersection1.p_type == PointType.OUT_OF_RANGE:
+                    intersection1 = None
+                intersections.append(intersection1)
+
+            # Object below is a Half Circle
+            else:
+                circle_intersection1, circle_intersection2 = adj_obj.parent.compute_intersection_line(line)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+
+            # Object above is a line segment
+            adj_obj = self.tree[line_index-1]
+            if type(adj_obj) is InputHandler.LineSegment:
+                intersection2 = line.compute_intersection(adj_obj)
+                if intersection2.p_type == PointType.OUT_OF_RANGE:
+                    intersection2 = None
+                intersections.append(intersection2)
+
+            # Object above is a Half Circle
+            else:
+                circle_intersection1, circle_intersection2 = adj_obj.parent.compute_intersection_line(line)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+
+            return intersections
+
+        # Added event is the top most event
         elif line_index == 0:
-            try:
-                intersection = line.compute_intersection(self.tree[line_index+1])
-            except IndexError:
-                return None, None
-            return (intersection, None) if (intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION)\
-                else (None, None)
+            object_below = self.tree[line_index + 1]
+            if type(object_below) is InputHandler.LineSegment:
+                try:
+                    intersection = line.compute_intersection(self.tree[line_index+1])
+                except IndexError:
+                    intersections.append(None)
+                    return intersections
+
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    intersections.append(intersection)
+
+            # Object below is Half Circle
+            else:
+                circle_intersection1, circle_intersection2 = object_below.parent.compute_intersection_line(line)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+
         else:
-            try:
-                intersection = line.compute_intersection(self.tree[line_index-1])
-            except IndexError:
-                intersection = None
-            return (intersection, None) if (intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION)\
-                       else (None, None)
+            object_above = self.tree[line_index + 1]
+            if type(object_above) is InputHandler.LineSegment:
+                try:
+                    intersection = line.compute_intersection(self.tree[line_index-1])
+                except IndexError:
+                    intersections.append(None)
+                    return intersections
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    intersections.append(intersection)
+                    return intersections
+
+        return intersections
 
     def delete_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
+        result = None
         if len(self.tree) == 0:
-            return None
-        line_index = self.index_in_tree(line)
+            return None, None
+        line_index = self.tree.index(line)
         if 0 < line_index < len(self.tree)-1:
-            intersection = self.tree[line_index - 1].compute_intersection(self.tree[line_index + 1])
-            result = intersection if (intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION) \
-                else None
+            obj_above = self.tree[line_index - 1]
+            obj_below = self.tree[line_index + 1]
+            if type(obj_above) is InputHandler.LineSegment and type(obj_below) is InputHandler.LineSegment:
+                intersection = self.tree[line_index - 1].compute_intersection(self.tree[line_index + 1])
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    result =  intersection, None
+                else:
+                    result = None, None
+            elif type(obj_above) is InputHandler.LineSegment and type(obj_below) is InputHandler.HalfCircle:
+                circle_intersection1, circle_intersection2 = obj_below.parent.compute_intersection_line(obj_above)
+                result = circle_intersection1, circle_intersection2
+            elif type(obj_above) is InputHandler.HalfCircle and type(obj_below) is InputHandler.LineSegment:
+                circle_intersection1, circle_intersection2 = obj_above.parent.compute_intersection_line(obj_below)
+                result = circle_intersection1, circle_intersection2
+            # Both are circles
+            else:
+                # Check if they are the same circle
+                obj_above = self.tree[line_index - 1]
+                obj_below = self.tree[line_index + 1]
+                if obj_above.parent.is_same(obj_below.parent):
+                    result = None, None
+                else:
+                    circle_intersection1, circle_intersection2 = obj_below.parent.compute_intersection_circle(obj_above.parent)
+                    result = circle_intersection1, circle_intersection2
         else:
-            result = None
-
+            result = None, None
         del self.tree[line_index]
         return result
 
     def swap_and_report_intersection(self, line1, line2, sweepline):
         self.sweepline = sweepline
         # Swap the order of l1 and l2 and report s adj to l1 and s' adj to l2
-        index1 = self.index_in_tree(line1)
-        index2 = self.index_in_tree(line2)
+        index1 = self.tree.index(line1)
+        index2 = self.tree.index(line2)
+        intersections = []
         if abs(index1-index2) != 1:
             raise Exception("Invalid line segments to swap. They are not adjacent in the tree.")
         # self.tree[index1], self.tree[index2] = self.tree[index2], self.tree[index1]
         self.swap_order(index1, index2, line1, line2)
         if index1 > index2:
             try:
-                intersection1 = line2.compute_intersection(self.tree[index1+1])
-                if intersection1 is not None:
-                    intersection1 = None if (intersection1.p_type == PointType.OUT_OF_RANGE or intersection1.x < sweepline) \
-                        else intersection1
+                obj_below = self.tree[index1+1]
+                if type(obj_below) is InputHandler.LineSegment:
+                    intersection1 = line2.compute_intersection(obj_below)
+                    if intersection1 is not None:
+                        intersection1 = None if (intersection1.p_type == PointType.OUT_OF_RANGE or intersection1.x < sweepline) \
+                            else intersection1
+                    intersections.append(intersection1)
+                else:
+                    circle_intersection1, circle_intersection2 = obj_below.parent.compute_intersection_line(line2)
+                    intersections.append(circle_intersection1)
+                    intersections.append(circle_intersection2)
             except IndexError:
                 intersection1 = None
+                intersections.append(intersection1)
             try:
-                intersection2 = line1.compute_intersection(self.tree[index2-1])
-                if intersection2 is not None:
-                    intersection2 = None if (intersection2.p_type == PointType.OUT_OF_RANGE or intersection2.x < sweepline) \
-                        else intersection2
+                obj_above = self.tree[index2 - 1]
+                if type(obj_above) is InputHandler.LineSegment:
+                    intersection2 = line1.compute_intersection(obj_above)
+                    if intersection2 is not None:
+                        intersection2 = None if (intersection2.p_type == PointType.OUT_OF_RANGE or intersection2.x < sweepline) \
+                            else intersection2
+                    intersections.append(intersection2)
+                else:
+                    circle_intersection1, circle_intersection2 = obj_above.parent.compute_intersection_line(line1)
+                    intersections.append(circle_intersection1)
+                    intersections.append(circle_intersection2)
 
             except IndexError:
                 intersection2 = None
+                intersections.append(intersection2)
         else:
             try:
-                intersection1 = line2.compute_intersection(self.tree[index1-1])
-                if intersection1 is not None:
-                    intersection1 = None if (intersection1.p_type == PointType.OUT_OF_RANGE or intersection1.x < sweepline)\
-                        else intersection1
+                obj_above= self.tree[index1-1]
+                if type(obj_above) is InputHandler.LineSegment:
+                    intersection1 = line2.compute_intersection(obj_above)
+                    if intersection1 is not None:
+                        intersection1 = None if (intersection1.p_type == PointType.OUT_OF_RANGE or intersection1.x < sweepline) \
+                            else intersection1
+                    intersections.append(intersection1)
+                else:
+                    circle_intersection1, circle_intersection2 = obj_above.parent.compute_intersection_line(line2)
+                    intersections.append(circle_intersection1)
+                    intersections.append(circle_intersection2)
             except IndexError:
                 intersection1 = None
+                intersections.append(intersection1)
             try:
-                intersection2 = line1.compute_intersection(self.tree[index2+1])
-                if intersection2 is not None:
-                    intersection2 = None if (intersection2.p_type == PointType.OUT_OF_RANGE or intersection2.x < sweepline)\
-                        else intersection2
+                obj_below= self.tree[index2 + 1]
+                if type(obj_below) is InputHandler.LineSegment:
+                    intersection2 = line1.compute_intersection(obj_below)
+                    if intersection2 is not None:
+                        intersection2 = None if (intersection2.p_type == PointType.OUT_OF_RANGE or intersection2.x < sweepline) \
+                            else intersection2
+                    intersections.append(intersection2)
+                else:
+                    circle_intersection1, circle_intersection2 = obj_below.parent.compute_intersection_line(line1)
+                    intersections.append(circle_intersection1)
+                    intersections.append(circle_intersection2)
+
             except IndexError:
                 intersection2 = None
+                intersections.append(intersection2)
 
-        return intersection1, intersection2
+        return intersections
 
 
 class EventsQueue:
@@ -173,24 +349,17 @@ class PlaneSweep:
             raise Exception("Invalid Input Type")
         self.q = EventsQueue()
         self.q.init_heap(plane_sweep_input.all_points())
-        self.sweepline_status = SweepLineStatusList()
+        self.sweepline_status = SweepLineStatus()
         self.intersections = []
 
-    def process_event(self, event):
+    def _process_event(self, event):
         sweepline = event.x
         if event.p_type == PointType.STARTING:
             # Add line to SweepLineStatus
             # Compute intersections
             # Add intersections to EventsQueue if right of L
-            intersection1, intersection2 = self.sweepline_status.add_and_report_intersection(event.line1, sweepline)
-
-            # if intersection1 is not None and intersection1.p_type == PointType.INTERSECTION:
-            #     self.intersections.append(intersection1)
-            # if intersection2 is not None and intersection2.p_type == PointType.INTERSECTION:
-            #     self.intersections.append(intersection2)
-
-            self.q.push(intersection1)
-            self.q.push(intersection2)
+            intersections = self.sweepline_status.add_and_report_intersection(event.line1, sweepline)
+            [self.q.push(intersection) for intersection in intersections]
 
         elif event.p_type == PointType.END:
             # Delete line from SweepLineStatus
@@ -203,10 +372,36 @@ class PlaneSweep:
             # Swap Intersecting lines
             # Generate new events based on swap
             # Add new events to the heap
-            intersection1, intersection2 = self.sweepline_status.swap_and_report_intersection(event.line1, event.line2, sweepline)
+            intersections = self.sweepline_status.swap_and_report_intersection(event.line1, event.line2, sweepline)
+            [self.q.push(intersection) for intersection in intersections]
 
-            self.q.push(intersection1)
-            self.q.push(intersection2)
+        elif event.p_type == PointType.CIRCLE_START:
+            # Insert two arcs into status
+            # Check for intersections with their neighbours
+            # if its a Circle -> Intersection of circle with circle
+            # if its a line -> Intersection of circle with line
+            intersections = self.sweepline_status.add_circle_report_intersection(event.circle1, sweepline)
+            [self.q.push(intersection) for intersection in intersections]
+
+        elif event.p_type == PointType.CIRCLE_END:
+            # Remove both the arcs from SLS
+            # Check for intersection
+            intersections = self.sweepline_status.delete_circle_report_intersection(event.circle1)
+            [self.q.push(intersection) for intersection in intersections]
+
+        elif event.p_type == PointType.C_w_C_INTERSECTION:
+            # Swap the upper half of lower circle with the lower half of upper circle
+            # Check for intersections
+            # Add new events to heap
+            pass
+
+        elif event.p_type == PointType.C_w_L_INTERSECTION:
+            # Check if the event if for upper half or lower half
+            # Swap the order of line and that half in the sweepline status.
+            # Check for intersection
+            # Add new events to heap
+            pass
+
         else:
             raise Exception("Got an out of bound point in the sweepline status")
 
@@ -218,7 +413,7 @@ class PlaneSweep:
                 continue
             if next_point.p_type == PointType.INTERSECTION:
                 self.intersections.append(next_point)
-            self.process_event(next_point)
+            self._process_event(next_point)
             prev = next_point
 
         return self.intersections
