@@ -27,7 +27,34 @@ class SweepLineStatus:
         self.tree.append(line)
         self.tree.sort(key=lambda x: x.value_at_x(self.sweepline))  # TODO: Optimize
 
-    def swap_cwc_intersection(self, circle1, circle2):
+    def swap_cwl_intersection(self, circle1, line1, event, sweepline):
+        if circle1.intersects_upper(event):
+            # Point intersects the upper half
+            # swap with upper half circle
+            low_index = self.tree.index(line1)
+            up_index = self.tree.index(circle1.upper_circle)
+            if low_index
+            try:
+                up_obj = self.tree[up_index+1]
+            except IndexError:
+                up_obj = None
+            try:
+                low_obj = self.tree[low_index-1]
+            except IndexError:
+                low_obj = None
+
+        else:
+            low_index = self.tree.index(circle1.lower_circle)
+            up_index = self.tree.index(line1)
+
+        self.tree[low_index], self.tree[up_index] = self.tree[up_index], self.tree[low_index]
+        try:
+            up_obj = self.tree[up_index+1]
+            if type(up_obj) is InputHandler.LineSegment:
+
+
+
+    def swap_cwc_intersection(self, circle1, circle2, sweepline):
         if circle1.y > circle2.y:
             up_circle = circle1
             low_circle = circle2
@@ -39,6 +66,33 @@ class SweepLineStatus:
         up_half_circle_index = self.tree.index(low_circle.upper_circle)
 
         self.tree[low_half_circle_index], self.tree[up_half_circle_index] = self.tree[up_half_circle_index], self.tree[low_half_circle_index]
+        intersections = []
+        try:
+            up_obj = self.tree[up_half_circle_index+1]
+            if type(up_obj) is InputHandler.LineSegment:
+                intersection = low_circle.parent.compute_intersection_line(up_obj)
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    intersections.append(intersection)
+            else:
+                circle_intersection1, circle_intersection2 = low_circle.parent.compute_intersection_circle(up_obj)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+        except IndexError:
+            pass
+
+        try:
+            low_obj = self.tree[low_half_circle_index-1]
+            if type(low_obj) is InputHandler.LineSegment:
+                intersection = up_circle.parent.compute_intersection_line(low_obj)
+                if intersection.x > sweepline and intersection.p_type == PointType.INTERSECTION:
+                    intersections.append(intersection)
+            else:
+                circle_intersection1, circle_intersection2 = up_circle.parent.compute_intersection_circle(low_obj)
+                intersections.append(circle_intersection1)
+                intersections.append(circle_intersection2)
+        except IndexError:
+            pass
+        return intersections
 
 
 
@@ -393,14 +447,17 @@ class PlaneSweep:
             # Swap the upper half of lower circle with the lower half of upper circle
             # Check for intersections
             # Add new events to heap
-            pass
+            intersections = self.sweepline_status.swap_cwc_intersection(event.circle1, event.circle2, sweepline)
+            [self.q.push(intersection) for intersection in intersections]
 
         elif event.p_type == PointType.C_w_L_INTERSECTION:
             # Check if the event if for upper half or lower half
             # Swap the order of line and that half in the sweepline status.
             # Check for intersection
             # Add new events to heap
-            pass
+            intersections = self.sweepline_status.swap_cwl_intersection(event.circle1, event.line1, event, sweepline)
+            [self.q.push(intersection) for intersection in intersections]
+
 
         else:
             raise Exception("Got an out of bound point in the sweepline status")

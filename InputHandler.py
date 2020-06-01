@@ -137,6 +137,13 @@ class Circle:
         else:
             return False
 
+    def intersects_upper(self, point):
+        if point.y > self.center_y:
+            return True
+        else:
+            return False
+
+
 
 class CircleHalf(Enum):
     UPPER = 1
