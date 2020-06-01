@@ -2,11 +2,24 @@ from InputHandler import PlaneSweepInput, Point, PointType
 import InputHandler
 import heapq
 from sortedcontainers import SortedList
+from bisect import bisect_left, insort_left
 
 
-class SweepLineStatus:
-    def __init__(self):
-        pass
+
+class KeyWrapper:
+    def __init__(self, iterable, key):
+        self.it = iterable
+        self.key = key
+
+    def __getitem__(self, i):
+        return self.key(self.it[i])
+
+    def __len__(self):
+        return len(self.it)
+
+    def insert(self, index, item):
+        print('asked to insert %s at index%d' % (item, index))
+        self.it.insert(index, {"time":item})
 
 
 class SweepLineStatusList:
@@ -14,11 +27,16 @@ class SweepLineStatusList:
         self.sweepline = 0
         self.tree = []
 
+    # Adding in O(log(n)) Time
+    def _binary_append(self, line):
+        bslindex = bisect_left(KeyWrapper(self.tree, key=lambda x: x.value_at_x(self.sweepline)),
+                               line.value_at_x(self.sweepline))
+        self.tree.insert(bslindex, line)
+
     def add_and_report_intersection(self, line, sweepline):
         self.sweepline = sweepline
         # Add a new line segment and report the s and s' which are adjacent to the new line
-        self.tree.append(line)
-        self.tree.sort(key=lambda x: x.value_at_x(sweepline)) # TODO: Check
+        self._binary_append(line)
         line_index = self.tree.index(line)
         if 0 < line_index < len(self.tree)-1:
             intersection1 = line.compute_intersection(self.tree[line_index+1])
@@ -166,11 +184,6 @@ class PlaneSweep:
             # Compute intersections
             # Add intersections to EventsQueue if right of L
             intersection1, intersection2 = self.sweepline_status.add_and_report_intersection(event.line1, sweepline)
-
-            # if intersection1 is not None and intersection1.p_type == PointType.INTERSECTION:
-            #     self.intersections.append(intersection1)
-            # if intersection2 is not None and intersection2.p_type == PointType.INTERSECTION:
-            #     self.intersections.append(intersection2)
 
             self.q.push(intersection1)
             self.q.push(intersection2)
